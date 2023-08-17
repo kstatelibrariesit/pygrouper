@@ -6,6 +6,7 @@ from .client import GrouperClient
 from .exceptions import GrouperAPIError
 
 import requests
+import json
 
 class GrouperAPI(GrouperClient):
     def is_member(self, username, groupname):
@@ -29,21 +30,46 @@ class GrouperAPI(GrouperClient):
         else:
             raise(GrouperAPIError(f"is_member - Unexpected result received: {metadata['resultCode']}"))
 
-    def get_members(self, groupname):
+    def get_members(self, groupname, payload=None):
         """ Retrieve members of a group
 
         Inputs:
           groupname - group name to query, ex: org:test:somestem
+          subjectAttributeNames - Additional data to return via the api
 
         Returns a list of subjects
         """
-        result = self._get(f"groups/{groupname}/members")
-        metadata = result['WsGetMembersLiteResult']['resultMetadata']
+
+        params = {
+            "WsRestGetMembersRequest":{
+                "wsGroupLookups":[
+                    {
+                        "groupName": f"{groupname}"
+                    }
+                ],
+                # "subjectAttributeNames":[
+                #     "ksuPersonRealGivenname",
+                #     "ksuPersonRealSn",
+                #     "uid",
+                #     "ksuPersonWildcatID",
+                # ]
+            }
+        }
+        if payload is not None:
+            params['WsRestGetMembersRequest'].update(payload)
+
+        try:
+            result = self._post(f"groups", params)
+        except requests.exceptions.HTTPError as err:
+            raise(GrouperAPIError(err))
+
+        metadata = result['WsGetMembersResults']['resultMetadata']
 
         if metadata['resultCode'] == 'SUCCESS':
-            if 'wsSubjects' in result['WsGetMembersLiteResult']:
-                return result['WsGetMembersLiteResult']['wsSubjects']
+            if 'wsSubjects' in result['WsGetMembersResults']['results'][0]:
+                return result['WsGetMembersResults']['results'][0]['wsSubjects']
             else:
+                print("wsSubjects missing")
                 return []
         else:
             raise(GrouperAPIError(f"get_members - Unexpected result received: {metadata['resultCode']}"))
